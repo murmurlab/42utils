@@ -1,66 +1,43 @@
-# Linux Theming Rehberi (42 Okul Ortamı)
+# GNOME Theming Rehberi
 
-Bu rehber, kısıtlı yetkilere sahip okul bilgisayarlarında (GNOME masaüstü) tema ve ikon özelleştirmelerini nasıl yapacağınızı anlatır.
+Bu doküman, kısıtlı yetkilere sahip ortamlarda (Örn: 42 Okulları) GNOME masaüstü özelleştirme adımlarını içerir.
 
-## 1. Oomox (Themix) ile Tema Oluşturma
+## 1. Hazırlık ve Dizinlerin Oluşturulması
 
-Kendi renk paletinize göre tema oluşturmak için **Oomox** (yeni adıyla Themix) kullanabilirsiniz. Root yetkisi gerekmediği için Flatpak üzerinden kullanıcı modunda kuracağız.
-
-### Kurulum (Flatpak)
-Önce Flatpak'in `/sgoinfre` üzerine kurulu olduğundan emin olun (bkz: `flatpak.md`).
+Sistemin temaları ve ikonları yerel kullanıcı seviyesinde tanıması için gerekli dizinleri oluşturun:
 
 ```bash
-# Oomox (Themix) GUI uygulamasını kur
+mkdir -p ~/.themes ~/.icons
+```
+> **Not:** İndirdiğiniz arşivleri (.zip, .tar.gz vb.) dışa aktarıp, indirdiğiniz içeriğin türüne göre `~/.themes` (GTK/Shell Temaları) veya `~/.icons` (İkon/İmleç Setleri) dizinlerine taşımanız yeterlidir.
+
+## 2. Özel Tema Oluşturma (Themix/Oomox)
+
+Kendi renk paletinizi oluşturmak isterseniz **Themix** (eski adıyla Oomox) kullanabilirsiniz. Kurulum için Flatpak'in `/sgoinfre` üzerinde yapılandırıldığından emin olun (Bkz: `flatpak/flatpak.md`).
+
+```bash
+# Kurulum
 flatpak --user install flathub com.gitlab.themix_project.Oomox
+
+# Çalıştırma
+flatpak run com.gitlab.themix_project.Oomox
 ```
 
-### Kullanım
-1.  Uygulamayı başlatın (Menüden veya terminalden: `flatpak run com.gitlab.themix_project.Oomox`).
-2.  Sol menüden bir hazır set seçin (örn: Numix).
-3.  Renkleri zevkinize göre değiştirin.
-4.  **Export Theme** butonuna basarak temayı oluşturun.
+> Themix üzerinden temanızı oluşturup **Export Theme** butonuna tıklayarak doğrudan `~/.themes` dizinine aktarabilirsiniz.
 
----
+## 3. GNOME Eklentileri (Extensions)
 
-## 2. Tema ve İkon Klasörleri
+Shell temasını (üst panel, dock ve uygulama menüleri) değiştirebilmek için **User Themes** eklentisi zorunludur.
 
-İndirdiğiniz veya oluşturduğunuz temaları sistemin tanıması için ev dizininizde belirli klasörler olmalıdır. Eğer yoksa oluşturun:
+1. `extensions.gnome.org` adresinden veya **Extensions** uygulaması üzerinden **User Themes** eklentisini aktif konuma getirin.
+2. *Önerilen ek eklentiler:* **Dash to Dock** (Özelleştirilebilir dock), **Blur My Shell** (Panel bulanıklaştırma).
 
-```bash
-# GTK ve Shell temaları için
-mkdir -p ~/.themes
+## 4. Temaların Uygulanması
 
-# İkon setleri ve cursor (imleç) temaları için
-mkdir -p ~/.icons
-```
-
-> **Not:** Oomox genellikle temaları otomatik olarak `~/.themes` içine atar. İnternetten (örn: gnome-look.org) indirdiğiniz temaları zipten çıkarıp bu klasörlereatmalısınız.
-
----
-
-## 3. Temayı Aktifleştirme (Tweaks & Settings)
-
-Temaları uygulamak için **GNOME Tweaks** aracına ihtiyacınız var. Okul bilgisayarlarında genellikle yüklü gelir.
-
-1.  **GNOME Tweaks** uygulamasını başlatın.
-2.  **Appearance (Görünüm)** sekmesine gelin.
-3.  **Applications (Uygulamalar):** Buradan oluşturduğunuz veya indirdiğiniz GTK temasını seçin.
-4.  **Icons (İkonlar):** Buradan ikon setini seçin.
-5.  **Cursor (İmleç):** Buradan imleç temasını seçin.
-6.  **Shell:** GNOME üst bar ve menü temasını değiştirmek için **User Themes** eklentisi gereklidir (aşağıya bakın).
-
----
-
-## 4. GNOME Extensions (Eklentiler)
-
-Shell temasını (üst bar ve uygulama menüsü) değiştirebilmek için **User Themes** eklentisinin açık olması gerekir.
-
-### Eklenti Yönetimi
-1.  **Extensions (Eklentiler)** uygulamasını açın (yoksa tarayıcıdan `extensions.gnome.org` kullanabilirsiniz, ancak native host connector gerekebilir).
-2.  **User Themes** eklentisini bulun ve **AÇIK** konuma getirin.
-3.  Şimdi Tweaks -> Appearance -> Shell kısmından temayı değiştirebilirsiniz.
-
-### Önerilen Eklentiler
-*   **User Themes:** Shell teması yüklemek için zorunlu.
-*   **Dash to Dock:** Dock çubuğunu özelleştirmek için.
-*   **Blur My Shell:** Panelleri şeffaflaştırmak/bulanıklaştırmak için.
+1. **GNOME Tweaks** uygulamasını açın. (Sistemde yüklü değilse okul ortamında genelde bulunur).
+2. **Appearance (Görünüm)** sekmesine gidin.
+3. İlgili bölümlerden yüklediğiniz bileşenleri seçin:
+   - **Applications:** GTK (Pencere/Uygulama) teması
+   - **Icons:** İkon seti
+   - **Cursor:** İmleç teması
+   - **Shell:** Panel ve menü teması (Sadece User Themes aktifken çalışır)

@@ -1,85 +1,58 @@
-# Flatpak Kurulumu & Sorun Giderme Rehberi
+# Flatpak Yapılandırma Rehberi
 
-Bu rehber, Flatpak uygulamalarının disk kotasını doldurmaması için `/sgoinfre` altında nasıl yapılandırılacağını ve olası sorunların nasıl çözüleceğini anlatır.
+Bu doküman, Flatpak uygulamalarının ve verilerinin sistem kotasını doldurmasını önlemek amacıyla `/sgoinfre` alanına taşınması ve yönetilmesi adımlarını kapsar.
 
-## 1. İlk Kurulum ve Yapılandırma
+## 1. Kurulum ve Yönlendirme (Symlink)
 
-Flatpak uygulamalarını ve verilerini `/sgoinfre` diskine taşımak için sembolik link (symlink) kullanacağız.
+Uygulama dizinini temizleyip `/sgoinfre` alanına sembolik bağlantı oluşturun ve Flathub deposunu ekleyin:
 
 ```bash
-# 1. Mevcut flatpak klasörünü temizle (varsa)
+# Eski dizini silin ve sgoinfre üzerinde yenisini oluşturun
 rm -rf ~/.local/share/flatpak
-
-# 2. sgoinfre üzerinde ana klasörü oluştur
 mkdir -p /sgoinfre/$USER/flatpak
 
-# 3. Sembolik linki oluştur
+# Sembolik bağlantıyı (symlink) kurun
 ln -s /sgoinfre/$USER/flatpak ~/.local/share/flatpak
 
-# 4. Flathub deposunu ekle
+# Flathub deposunu kullanıcı seviyesinde ekleyin
 flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 ```
 
-### Kurulum Kontrolü
-Aşağıdaki komutla kurulumun doğru yapıldığını doğrulayabilirsiniz:
+**Doğrulama:**
+Aşağıdaki komutla bağlantının doğru kurulduğunu teyit edebilirsiniz:
 ```bash
-ls -la ~/.local/share/flatpak
+ls -ld ~/.local/share/flatpak
+# Beklenen Çıktı: ... ~/.local/share/flatpak -> /sgoinfre/USER/flatpak
 ```
-**Beklenen Çıktı:**
-```
-lrwxrwxrwx ... /home/rakman/.local/share/flatpak -> /sgoinfre/rakman/flatpak
-```
-Bu çıktı, `.local/share/flatpak` yolunun aslında `/sgoinfre` diskini işaret ettiğini gösterir.
 
----
+## 2. Uygulama Yönetimi
 
-## 2. Homemover ile Birlikte Kullanım
-
-Eğer `homemover.sh` scriptini çalıştırırsanız, `.local/share` klasörünü **taşımamanız** gerekir.
-
-*   `homemover.sh` zaten `.local/share` için size soru sorar.
-*   **Cevap:** `n` (Hayır) olmalıdır.
-*   Çünkü `.local/share/flatpak` zaten bir symlink'tir. Eğer `.local/share` klasörünün tamamını taşırsanız, iç içe symlink oluşur ve Flatpak bozulabilir.
-
----
-
-## 3. Uygulama Yükleme Örneği (Zen Browser)
-
-Kurulum tamamlandıktan sonra uygulamaları normal şekilde kurabilirsiniz. Tüm veriler otomatik olarak sgoinfre'ye yazılacaktır.
+Gerekli yapılandırma sonrası kurulumlar otomatik olarak `/sgoinfre` alanına yapılacaktır.
 
 ```bash
+# Örnek Uygulama Kurulumu (Örn: Zen Browser)
 flatpak --user install flathub app.zen_browser.zen
-```
 
-Çalıştırmak için:
-```bash
+# Uygulama Çalıştırma
 flatpak run app.zen_browser.zen
 ```
 
----
+> **Uyarı (`homemover.sh` Kullanıcıları İçin):**
+> Homemover betiği çalıştırılırken, `.local/share` dizininin taşınmasını isteyen soruya **Hayır (`n`)** yanıtını verin. `.local/share/flatpak` halihazırda bir symlink olduğu için iç içe sembolik bağlantılar Flatpak yapısını bozacaktır.
 
-## 4. Sorun Giderme (Tamamen Sıfırlama)
+## 3. Sorun Giderme ve Sıfırlama
 
-Eğer Flatpak bozulursa (örneğin "No remote refs found" hatası alırsanız veya yanlış symlink oluşursa), aşağıdaki adımlarla tamamen sıfırdan kurabilirsiniz:
+Flatpak depolarında "No remote refs found" gibi hatalar veya bağlantı bozulmaları yaşanırsa, sistemi tamamen sıfırlamak için şu adımları izleyin:
 
 ```bash
-# 1. Tüm kullanıcı uygulamalarını kaldır
+# 1. Mevcut tüm uygulamaları kaldırın
 flatpak --user uninstall --all
 
-# 2. Bozuk veya yanlış linklenmiş yerel klasörü zorla sil
-rm -rf ~/.local/share/flatpak
+# 2. Hatalı dizinleri/bağlantıları silin
+rm -rf ~/.local/share/flatpak /sgoinfre/$USER/flatpak
 
-# 3. sgoinfre'deki eski kalıntıları temizle ve yeniden oluştur
-rm -rf /sgoinfre/$USER/flatpak
+# 3. Baştan kurulum adımlarını tekrarlayın
 mkdir -p /sgoinfre/$USER/flatpak
-
-# 4. Doğru sembolik linki tekrar oluştur
 ln -s /sgoinfre/$USER/flatpak ~/.local/share/flatpak
-
-# 5. Flathub deposunu tekrar ekle (kritik adım)
 flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-
-# 6. Depoların listelendiğini kontrol et
-flatpak --user remotes
 ```
-Bu adımdan sonra kurulum tekrar sorunsuz çalışacaktır.
