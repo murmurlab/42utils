@@ -89,6 +89,9 @@ assert_safe_path() {
     case "$path" in
         ""|/|.|..) return 1 ;;
     esac
+    case "$allowed_prefix" in
+        ""|/|.|..) return 1 ;;
+    esac
     
     local real_path real_prefix
     real_path=$(resolve_path "$path") || return 1
@@ -153,8 +156,12 @@ move_and_link() {
         
         if ! verify_copy "$src" "$dest"; then
             log_msg "    ${YELLOW}Cleaning up unverified copy...${NC}"
-            log_cmd "rm -rf -- \"$dest\" (cleanup after verify failure)"
-            rm -rf -- "$dest"
+            if assert_safe_path "$dest" "$TARGET_BASE"; then
+                log_cmd "rm -rf -- \"$dest\" (cleanup after verify failure)"
+                rm -rf -- "$dest"
+            else
+                log_msg "    ${RED}[SECURITY]${NC} Cleanup skipped: path validation failed for dest: $dest"
+            fi
             return 1
         fi
         
