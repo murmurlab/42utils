@@ -45,8 +45,11 @@ get_size_mb() {
 resolve_path() {
     if command -v realpath >/dev/null 2>&1; then
         realpath -e -- "$1" 2>/dev/null
-    else
+    elif readlink -f -- "$1" >/dev/null 2>&1; then
         readlink -f -- "$1" 2>/dev/null
+    else
+        log_msg "    ${RED}[FATAL]${NC} Neither realpath nor readlink -f available. Cannot validate paths."
+        return 1
     fi
 }
 
@@ -75,21 +78,26 @@ assert_safe_path() {
 verify_copy() {
     local src="$1"
     local dest="$2"
-    local src_count dest_count src_size dest_size
-    src_count=$(find "$src" -type f 2>/dev/null | wc -l)
-    dest_count=$(find "$dest" -type f 2>/dev/null | wc -l)
+    local mode="${VERIFY_MODE:-full}"
+    local src_size dest_size
     src_size=$(du -sk "$src" 2>/dev/null | awk '{print $1}')
     dest_size=$(du -sk "$dest" 2>/dev/null | awk '{print $1}')
     
-    if [ "${src_count:-0}" -ne "${dest_count:-0}" ]; then
-        log_msg "    ${RED}[VERIFY FAILED]${NC} File count mismatch: src=$src_count dest=$dest_count"
-        log_res "VERIFY FAILED (file count: src=$src_count dest=$dest_count)"
-        return 1
-    fi
     if [ "${src_size:-0}" -ne "${dest_size:-0}" ]; then
         log_msg "    ${RED}[VERIFY FAILED]${NC} Size mismatch: src=${src_size}K dest=${dest_size}K"
         log_res "VERIFY FAILED (size: src=${src_size}K dest=${dest_size}K)"
         return 1
+    fi
+    
+    if [ "$mode" = "full" ]; then
+        local src_count dest_count
+        src_count=$(find "$src" -type f 2>/dev/null | wc -l)
+        dest_count=$(find "$dest" -type f 2>/dev/null | wc -l)
+        if [ "${src_count:-0}" -ne "${dest_count:-0}" ]; then
+            log_msg "    ${RED}[VERIFY FAILED]${NC} File count mismatch: src=$src_count dest=$dest_count"
+            log_res "VERIFY FAILED (file count: src=$src_count dest=$dest_count)"
+            return 1
+        fi
     fi
     return 0
 }
@@ -136,13 +144,22 @@ bring_back() {
         log_res "COPY SUCCESS"
         
         if ! verify_copy "$target_path" "$tmp_dest"; then
-            log_msg "    ${YELLOW}Cleaning up unverified copy...${NC}"
+            log_msg "    ${YELLOW}[CLEANUP]${NC} Cleaning up unverified copy..."
             log_cmd "rm -rf -- \"$tmp_dest\" (cleanup after verify failure)"
             rm -rf -- "$tmp_dest"
             return 1
         fi
         
         TOTAL_RESTORED_MB=$((TOTAL_RESTORED_MB + size_mb))
+        
+        # Re-check: is symlink_path still a symlink? (race condition guard)
+        if [ ! -L "$symlink_path" ]; then
+            log_msg "    ${RED}[SECURITY_SKIP]${NC} $symlink_path is no longer a symlink! Aborting."
+            log_res "ABORTED (symlink changed during operation)"
+            log_cmd "rm -rf -- \"$tmp_dest\" (cleanup after race detect)"
+            rm -rf -- "$tmp_dest"
+            return 1
+        fi
         
         # Only now it's safe to remove the symlink and rename tmp
         log_cmd "rm -- \"$symlink_path\""
@@ -152,7 +169,7 @@ bring_back() {
         mv -- "$tmp_dest" "$symlink_path"
         
         if ! assert_safe_path "$target_path" "/sgoinfre" && ! assert_safe_path "$target_path" "/goinfre"; then
-            log_msg "    ${RED}[SECURITY]${NC} Path validation failed for target: $target_path"
+            log_msg "    ${RED}[SECURITY_SKIP]${NC} Path validation failed for target: $target_path"
             log_res "ABORTED (unsafe target path, data restored but external not cleaned)"
             return 1
         fi

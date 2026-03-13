@@ -76,8 +76,11 @@ get_size_mb() {
 resolve_path() {
     if command -v realpath >/dev/null 2>&1; then
         realpath -e -- "$1" 2>/dev/null
-    else
+    elif readlink -f -- "$1" >/dev/null 2>&1; then
         readlink -f -- "$1" 2>/dev/null
+    else
+        log_msg "    ${RED}[FATAL]${NC} Neither realpath nor readlink -f available. Cannot validate paths."
+        return 1
     fi
 }
 
@@ -107,21 +110,26 @@ assert_safe_path() {
 verify_copy() {
     local src="$1"
     local dest="$2"
-    local src_count dest_count src_size dest_size
-    src_count=$(find "$src" -type f 2>/dev/null | wc -l)
-    dest_count=$(find "$dest" -type f 2>/dev/null | wc -l)
+    local mode="${VERIFY_MODE:-full}"
+    local src_size dest_size
     src_size=$(du -sk "$src" 2>/dev/null | awk '{print $1}')
     dest_size=$(du -sk "$dest" 2>/dev/null | awk '{print $1}')
     
-    if [ "${src_count:-0}" -ne "${dest_count:-0}" ]; then
-        log_msg "    ${RED}[VERIFY FAILED]${NC} File count mismatch: src=$src_count dest=$dest_count"
-        log_res "VERIFY FAILED (file count: src=$src_count dest=$dest_count)"
-        return 1
-    fi
     if [ "${src_size:-0}" -ne "${dest_size:-0}" ]; then
         log_msg "    ${RED}[VERIFY FAILED]${NC} Size mismatch: src=${src_size}K dest=${dest_size}K"
         log_res "VERIFY FAILED (size: src=${src_size}K dest=${dest_size}K)"
         return 1
+    fi
+    
+    if [ "$mode" = "full" ]; then
+        local src_count dest_count
+        src_count=$(find "$src" -type f 2>/dev/null | wc -l)
+        dest_count=$(find "$dest" -type f 2>/dev/null | wc -l)
+        if [ "${src_count:-0}" -ne "${dest_count:-0}" ]; then
+            log_msg "    ${RED}[VERIFY FAILED]${NC} File count mismatch: src=$src_count dest=$dest_count"
+            log_res "VERIFY FAILED (file count: src=$src_count dest=$dest_count)"
+            return 1
+        fi
     fi
     return 0
 }
@@ -155,12 +163,12 @@ move_and_link() {
         log_res "COPY SUCCESS"
         
         if ! verify_copy "$src" "$dest"; then
-            log_msg "    ${YELLOW}Cleaning up unverified copy...${NC}"
+            log_msg "    ${YELLOW}[CLEANUP]${NC} Cleaning up unverified copy..."
             if assert_safe_path "$dest" "$TARGET_BASE"; then
                 log_cmd "rm -rf -- \"$dest\" (cleanup after verify failure)"
                 rm -rf -- "$dest"
             else
-                log_msg "    ${RED}[SECURITY]${NC} Cleanup skipped: path validation failed for dest: $dest"
+                log_msg "    ${RED}[SECURITY_SKIP]${NC} Cleanup skipped: path validation failed for dest: $dest"
             fi
             return 1
         fi
@@ -177,6 +185,12 @@ move_and_link() {
         log_cmd "rm -rf -- \"$src\""
         rm -rf -- "$src"
         
+        if ! assert_safe_path "$dest" "$TARGET_BASE"; then
+            log_msg "    ${RED}[SECURITY_SKIP]${NC} Symlink skipped: path validation failed for dest: $dest"
+            log_res "ABORTED (unsafe dest path for symlink)"
+            return 1
+        fi
+        
         log_cmd "ln -s \"$dest\" \"$src\""
         ln -s "$dest" "$src"
         
@@ -184,12 +198,12 @@ move_and_link() {
     else
         log_res "FAILED (Exit Code: $status)"
         log_msg "    ${RED}[ERROR]${NC} An error occurred while moving ~/$rel!"
-        log_msg "    ${YELLOW}Cleaning up partial copy...${NC}"
+        log_msg "    ${YELLOW}[CLEANUP]${NC} Cleaning up partial copy..."
         if assert_safe_path "$dest" "$TARGET_BASE"; then
             log_cmd "rm -rf -- \"$dest\" (cleanup after failed rsync)"
             rm -rf -- "$dest"
         else
-            log_msg "    ${RED}[SECURITY]${NC} Cleanup skipped: path validation failed for dest: $dest"
+            log_msg "    ${RED}[SECURITY_SKIP]${NC} Cleanup skipped: path validation failed for dest: $dest"
         fi
     fi
 }
