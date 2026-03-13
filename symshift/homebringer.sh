@@ -42,13 +42,26 @@ get_size_mb() {
     echo $((${size_kb:-0} / 1024))
 }
 
+resolve_path() {
+    if command -v realpath >/dev/null 2>&1; then
+        realpath -e -- "$1" 2>/dev/null
+    else
+        readlink -f -- "$1" 2>/dev/null
+    fi
+}
+
 assert_safe_path() {
     local path="$1"
     local allowed_prefix="$2"
-    local real_path
-    real_path=$(realpath -e -- "$path" 2>/dev/null) || return 1
-    local real_prefix
-    real_prefix=$(realpath -e -- "$allowed_prefix" 2>/dev/null) || return 1
+    
+    # Reject pathological inputs
+    case "$path" in
+        ""|/|.|..) return 1 ;;
+    esac
+    
+    local real_path real_prefix
+    real_path=$(resolve_path "$path") || return 1
+    real_prefix=$(resolve_path "$allowed_prefix") || return 1
     
     if [[ "$real_path" == "$real_prefix"/* ]]; then
         return 0
@@ -65,12 +78,12 @@ verify_copy() {
     src_size=$(du -sk "$src" 2>/dev/null | awk '{print $1}')
     dest_size=$(du -sk "$dest" 2>/dev/null | awk '{print $1}')
     
-    if [ "$src_count" -ne "$dest_count" ]; then
+    if [ "${src_count:-0}" -ne "${dest_count:-0}" ]; then
         log_msg "    ${RED}[VERIFY FAILED]${NC} File count mismatch: src=$src_count dest=$dest_count"
         log_res "VERIFY FAILED (file count: src=$src_count dest=$dest_count)"
         return 1
     fi
-    if [ "$src_size" -ne "$dest_size" ]; then
+    if [ "${src_size:-0}" -ne "${dest_size:-0}" ]; then
         log_msg "    ${RED}[VERIFY FAILED]${NC} Size mismatch: src=${src_size}K dest=${dest_size}K"
         log_res "VERIFY FAILED (size: src=${src_size}K dest=${dest_size}K)"
         return 1
@@ -100,7 +113,11 @@ bring_back() {
     
     # Use mktemp for crash-safe unique temp dir on the same filesystem
     local tmp_dest
-    tmp_dest=$(mktemp -d "$(dirname "$symlink_path")/.bring_back_tmp.${rel##*/}.XXXXXX")
+    tmp_dest=$(mktemp -d "$(dirname "$symlink_path")/.bring_back_tmp.${rel##*/}.XXXXXX") || {
+        log_msg "    ${RED}[ERROR]${NC} Failed to create temp directory!"
+        log_res "FAILED (mktemp)"
+        return 1
+    }
     
     log_cmd "rsync/cp \"$target_path/\" \"$tmp_dest\""
     if command -v rsync >/dev/null 2>&1; then
@@ -117,19 +134,19 @@ bring_back() {
         
         if ! verify_copy "$target_path" "$tmp_dest"; then
             log_msg "    ${YELLOW}Cleaning up unverified copy...${NC}"
-            log_cmd "rm -rf \"$tmp_dest\" (cleanup after verify failure)"
-            rm -rf "$tmp_dest"
+            log_cmd "rm -rf -- \"$tmp_dest\" (cleanup after verify failure)"
+            rm -rf -- "$tmp_dest"
             return 1
         fi
         
         TOTAL_RESTORED_MB=$((TOTAL_RESTORED_MB + size_mb))
         
         # Only now it's safe to remove the symlink and rename tmp
-        log_cmd "rm \"$symlink_path\""
-        rm "$symlink_path"
+        log_cmd "rm -- \"$symlink_path\""
+        rm -- "$symlink_path"
         
-        log_cmd "mv \"$tmp_dest\" \"$symlink_path\""
-        mv "$tmp_dest" "$symlink_path"
+        log_cmd "mv -- \"$tmp_dest\" \"$symlink_path\""
+        mv -- "$tmp_dest" "$symlink_path"
         
         if ! assert_safe_path "$target_path" "/sgoinfre" && ! assert_safe_path "$target_path" "/goinfre"; then
             log_msg "    ${RED}[SECURITY]${NC} Path validation failed for target: $target_path"
@@ -137,15 +154,15 @@ bring_back() {
             return 1
         fi
         
-        log_cmd "rm -rf \"$target_path\""
-        rm -rf "$target_path"
+        log_cmd "rm -rf -- \"$target_path\""
+        rm -rf -- "$target_path"
         
         log_msg "    ${GREEN}[OK]${NC} ~/$rel restored successfully."
     else
         log_res "FAILED (Exit Code: $status)"
         log_msg "    ${RED}[ERROR]${NC} Failed to restore ~/$rel! (symlink untouched)"
-        log_cmd "rm -rf \"$tmp_dest\" (cleanup after failed copy)"
-        rm -rf "$tmp_dest"
+        log_cmd "rm -rf -- \"$tmp_dest\" (cleanup after failed copy)"
+        rm -rf -- "$tmp_dest"
     fi
 }
 
@@ -158,6 +175,8 @@ log_msg "Make sure you have enough disk quota in your home directory."
 log_msg "${RED}${BOLD}!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!${NC}\n"
 
 # Initialize log file (Append mode)
+: >> "$LOG_FILE"
+chmod 600 "$LOG_FILE" 2>/dev/null
 echo "----------------------------------------------------------------" >> "$LOG_FILE"
 date '+%Y-%m-%d %H:%M:%S - Homebringer Script Started' >> "$LOG_FILE"
 

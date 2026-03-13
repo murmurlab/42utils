@@ -15,6 +15,8 @@ USER_ID=$(whoami)
 TOTAL_MOVED_MB=0
 
 # Initialize log file (Append mode)
+: >> "$LOG_FILE"
+chmod 600 "$LOG_FILE" 2>/dev/null
 echo "----------------------------------------------------------------" >> "$LOG_FILE"
 date '+%Y-%m-%d %H:%M:%S - Homemover Script Started' >> "$LOG_FILE"
 
@@ -71,13 +73,26 @@ get_size_mb() {
     echo $((${size_kb:-0} / 1024))
 }
 
+resolve_path() {
+    if command -v realpath >/dev/null 2>&1; then
+        realpath -e -- "$1" 2>/dev/null
+    else
+        readlink -f -- "$1" 2>/dev/null
+    fi
+}
+
 assert_safe_path() {
     local path="$1"
     local allowed_prefix="$2"
-    local real_path
-    real_path=$(realpath -e -- "$path" 2>/dev/null) || return 1
-    local real_prefix
-    real_prefix=$(realpath -e -- "$allowed_prefix" 2>/dev/null) || return 1
+    
+    # Reject pathological inputs
+    case "$path" in
+        ""|/|.|..) return 1 ;;
+    esac
+    
+    local real_path real_prefix
+    real_path=$(resolve_path "$path") || return 1
+    real_prefix=$(resolve_path "$allowed_prefix") || return 1
     
     # Must start with prefix and not be the prefix itself
     if [[ "$real_path" == "$real_prefix"/* ]]; then
@@ -95,12 +110,12 @@ verify_copy() {
     src_size=$(du -sk "$src" 2>/dev/null | awk '{print $1}')
     dest_size=$(du -sk "$dest" 2>/dev/null | awk '{print $1}')
     
-    if [ "$src_count" -ne "$dest_count" ]; then
+    if [ "${src_count:-0}" -ne "${dest_count:-0}" ]; then
         log_msg "    ${RED}[VERIFY FAILED]${NC} File count mismatch: src=$src_count dest=$dest_count"
         log_res "VERIFY FAILED (file count: src=$src_count dest=$dest_count)"
         return 1
     fi
-    if [ "$src_size" -ne "$dest_size" ]; then
+    if [ "${src_size:-0}" -ne "${dest_size:-0}" ]; then
         log_msg "    ${RED}[VERIFY FAILED]${NC} Size mismatch: src=${src_size}K dest=${dest_size}K"
         log_res "VERIFY FAILED (size: src=${src_size}K dest=${dest_size}K)"
         return 1
@@ -138,8 +153,8 @@ move_and_link() {
         
         if ! verify_copy "$src" "$dest"; then
             log_msg "    ${YELLOW}Cleaning up unverified copy...${NC}"
-            log_cmd "rm -rf \"$dest\" (cleanup after verify failure)"
-            rm -rf "$dest"
+            log_cmd "rm -rf -- \"$dest\" (cleanup after verify failure)"
+            rm -rf -- "$dest"
             return 1
         fi
         
@@ -152,8 +167,8 @@ move_and_link() {
             return 1
         fi
         
-        log_cmd "rm -rf \"$src\""
-        rm -rf "$src"
+        log_cmd "rm -rf -- \"$src\""
+        rm -rf -- "$src"
         
         log_cmd "ln -s \"$dest\" \"$src\""
         ln -s "$dest" "$src"
@@ -163,8 +178,12 @@ move_and_link() {
         log_res "FAILED (Exit Code: $status)"
         log_msg "    ${RED}[ERROR]${NC} An error occurred while moving ~/$rel!"
         log_msg "    ${YELLOW}Cleaning up partial copy...${NC}"
-        log_cmd "rm -rf \"$dest\" (cleanup after failed rsync)"
-        rm -rf "$dest"
+        if assert_safe_path "$dest" "$TARGET_BASE"; then
+            log_cmd "rm -rf -- \"$dest\" (cleanup after failed rsync)"
+            rm -rf -- "$dest"
+        else
+            log_msg "    ${RED}[SECURITY]${NC} Cleanup skipped: path validation failed for dest: $dest"
+        fi
     fi
 }
 
